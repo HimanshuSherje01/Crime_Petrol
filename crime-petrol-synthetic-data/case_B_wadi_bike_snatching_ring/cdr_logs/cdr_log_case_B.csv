@@ -1,0 +1,5 @@
+caller_number,callee_number,timestamp,duration_seconds,cell_tower_location
+9811022001,9811033002,2024-05-02 19:50:11,45,Hingna Road Tower
+9811033002,9811022001,2024-05-02 20:55:30,20,Hingna Road Tower
+9811022001,9811033002,2024-05-05 20:40:02,38,Wadi Tower
+9811033002,9811044003,2024-05-05 21:20:15,15,Wadi Tower

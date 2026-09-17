@@ -1,0 +1,12 @@
+transaction_id,date,from_account,to_account,amount_inr,description
+TXN10021,2024-02-15,Ravi Tandel (cash),Mahesh Jewelers - Current A/c 04521178,620000,Cash deposit - gold sale
+TXN10022,2024-02-17,Mahesh Jewelers - Current A/c 04521178,Shree Ganesh Scrap Traders - A/c 07734410,400000,Business payment - scrap supply invoice #SG-118
+TXN10023,2024-02-18,Shree Ganesh Scrap Traders - A/c 07734410,Sanjay Deshmukh - Savings A/c 09981123,250000,Owner drawings
+TXN10031,2024-03-04,Suresh Pawar (cash),Mahesh Jewelers - Current A/c 04521178,310000,Cash deposit - misc goods
+TXN10032,2024-03-06,Mahesh Jewelers - Current A/c 04521178,Shree Ganesh Scrap Traders - A/c 07734410,200000,Business payment - scrap supply invoice #SG-121
+TXN10033,2024-03-07,Shree Ganesh Scrap Traders - A/c 07734410,Sanjay Deshmukh - Savings A/c 09981123,130000,Owner drawings
+TXN10041,2024-04-20,Vikram Chauhan (cash),Mahesh Jewelers - Current A/c 04521178,210000,Cash deposit - jewelry sale
+TXN10042,2024-04-22,Mahesh Jewelers - Current A/c 04521178,Shree Ganesh Scrap Traders - A/c 07734410,150000,Business payment - scrap supply invoice #SG-129
+TXN10043,2024-04-23,Shree Ganesh Scrap Traders - A/c 07734410,Sanjay Deshmukh - Savings A/c 09981123,95000,Owner drawings
+TXN10099,2024-03-11,Mahesh Jewelers - Current A/c 04521178,Nagpur Municipal Corp,18500,Property tax
+TXN10100,2024-04-02,Shree Ganesh Scrap Traders - A/c 07734410,State Electricity Board,6200,Electricity bill
