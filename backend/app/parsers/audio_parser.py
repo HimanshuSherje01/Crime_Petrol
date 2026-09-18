@@ -13,13 +13,14 @@ def load_whisper():
             print(f"Failed to load Whisper model: {e}")
 
 def parse_audio(case_path: Path):
-    audio_dir = case_path / "intercepted_calls"
     results = []
     
-    if not audio_dir.exists():
+    if not case_path.exists():
         return results
 
-    for wav_file in audio_dir.glob("*.wav"):
+    audio_files = list(case_path.rglob("*.wav")) + list(case_path.rglob("*.mp3")) + list(case_path.rglob("*.m4a"))
+
+    for wav_file in audio_files:
         text = ""
         # Try whisper first
         try:
@@ -32,7 +33,7 @@ def parse_audio(case_path: Path):
 
         # Fallback to transcript
         if not text:
-            transcript_file = audio_dir / f"{wav_file.stem}_transcript.txt"
+            transcript_file = wav_file.parent / f"{wav_file.stem}_transcript.txt"
             if transcript_file.exists():
                 with open(transcript_file, "r", encoding="utf-8") as f:
                     text = f.read().strip()

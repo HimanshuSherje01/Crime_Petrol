@@ -1,21 +1,49 @@
 import React, { useState } from 'react'
-import { AlertTriangle, Filter, CheckCircle2, Search, ArrowRight, ShieldAlert, Activity, ChevronDown } from 'lucide-react'
+import { AlertTriangle, Filter, CheckCircle2, Search, ArrowRight, Activity, ChevronDown, FolderOpen, Play, Loader2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
 
 export default function Alerts() {
-  const { alerts, selectedCase, fetchEntityDetails } = useStore()
+  const { alerts, selectedCase, analyzeState, analyzeCase } = useStore()
   const navigate = useNavigate()
-  
+
   const [filter, setFilter] = useState('ALL')
   const [search, setSearch] = useState('')
 
   const filteredAlerts = alerts.filter(a => {
-    const matchesSearch = a.title.toLowerCase().includes(search.toLowerCase()) || a.description.toLowerCase().includes(search.toLowerCase())
-    const matchesSev = filter === 'ALL' || a.severity.toUpperCase() === filter
+    const matchesSearch = (a.title || '').toLowerCase().includes(search.toLowerCase()) || (a.description || '').toLowerCase().includes(search.toLowerCase())
+    const matchesSev = filter === 'ALL' || (a.severity || '').toUpperCase() === filter
     return matchesSearch && matchesSev
   })
+
+  if (analyzeState === 'idle') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center space-y-4 bg-[#050914]">
+        <FolderOpen className="w-16 h-16 text-gray-800" />
+        <h2 className="text-xl font-bold text-white">Click to Analyze</h2>
+        <p className="text-gray-500 text-sm max-w-sm">
+          Run the analysis pipeline for <span className="text-primary font-mono">{selectedCase}</span> to generate threat alerts.
+        </p>
+        <button
+          onClick={() => analyzeCase(selectedCase)}
+          className="bg-primary text-black font-semibold px-4 py-2 rounded-lg text-xs hover:bg-primary-hover transition-colors flex items-center space-x-2"
+        >
+          <Play className="w-3.5 h-3.5" />
+          <span>Run Analysis</span>
+        </button>
+      </div>
+    )
+  }
+
+  if (analyzeState === 'loading') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full space-y-4 bg-[#050914]">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-gray-500 text-sm">Running intelligence pipeline...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-[#050914] min-h-full p-4 font-sans text-xs flex flex-col">
@@ -86,7 +114,7 @@ export default function Alerts() {
                   </span>
                   <span className="text-[10px] text-gray-600 font-mono flex items-center">
                     <Activity className="w-3 h-3 mr-1" />
-                    ID: {alert.id.substring(0,6)}
+                    ID: #{alert.id}
                   </span>
                 </div>
                 

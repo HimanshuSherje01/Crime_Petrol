@@ -11,6 +11,7 @@ import Network from './pages/Network'
 import Players from './pages/Players'
 import Alerts from './pages/Alerts'
 import CaseImport from './pages/CaseImport'
+import RecentAnalyses from './pages/RecentAnalyses'
 import EntityList from './pages/EntityList'
 import Settings from './pages/Settings'
 
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/players" element={<Players />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/case" element={<CaseImport />} />
+            <Route path="/recent-analyses" element={<RecentAnalyses />} />
             <Route path="/settings" element={<Settings />} />
             
             {/* <Route path="/communications" element={<EntityList type="COMMUNICATION" title="Communications" subtitle="Call records, messages, and social media interactions." />} />

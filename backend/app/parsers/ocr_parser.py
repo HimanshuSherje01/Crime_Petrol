@@ -4,13 +4,14 @@ import pytesseract
 from PIL import Image
 
 def parse_ocr(case_path: Path):
-    cctv_dir = case_path / "cctv_stills"
     results = []
     
-    if not cctv_dir.exists():
+    if not case_path.exists():
         return results
 
-    for img_file in cctv_dir.glob("*.png"):
+    image_files = list(case_path.rglob("*.png")) + list(case_path.rglob("*.jpg")) + list(case_path.rglob("*.jpeg"))
+    
+    for img_file in image_files:
         try:
             image = Image.open(img_file)
             text = pytesseract.image_to_string(image).strip()

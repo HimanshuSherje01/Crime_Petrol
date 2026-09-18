@@ -47,33 +47,55 @@ async def shutdown_db_client():
 
 @app.get("/api/cases", response_model=List[str])
 async def get_cases(db: Session = Depends(get_postgres_db)):
+    # Authoritative source: case folders available on disk (synthetic dataset).
+    folder_cases = list_cases()
+    if folder_cases:
+        return folder_cases
+    # Fallback: previously-registered cases in Postgres.
     cases = db.query(Case).all()
-    if cases:
-        return [c.id for c in cases]
-    return list_cases()
+    return [c.id for c in cases] if cases else []
 
 @app.post("/api/analyze/{case_id}")
 async def analyze_case(case_id: str, db: Session = Depends(get_postgres_db)):
+    from app.database.mongodb import db as mongo_client
+
+    # Log analysis run
+    run_id = f"RUN-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    new_run = AnalysisRun(id=run_id, case_id=case_id, status="Running", files_processed=0)
+    db.add(new_run)
+    db.commit()
+
     try:
-        from app.database.mongodb import db as mongo_client
-        
-        # Log analysis run
-        run_id = f"RUN-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        new_run = AnalysisRun(id=run_id, case_id=case_id, status="Running", files_processed=0)
-        db.add(new_run)
-        db.commit()
-        
         res = run_pipeline(case_id, db, mongo_client.db)
-        
-        # Update analysis run
-        new_run.status = "Completed"
-        new_run.duration = "0m 10s" # mock duration
-        new_run.findings = f"Found connections"
-        db.commit()
-        
-        return res
     except Exception as e:
+        print(f"Pipeline failed for {case_id}: {e}")
+        new_run.status = "Failed"
+        new_run.findings = str(e)[:200]
+        db.commit()
         raise HTTPException(status_code=500, detail=str(e))
+
+    files_processed = len(res.get("files_processed", []))
+    nodes = res["metadata"]["nodes"]
+    edges = res["metadata"]["edges"]
+    alerts_count = res["metadata"]["alerts_count"]
+
+    # Update analysis run
+    new_run.status = "Completed"
+    new_run.files_processed = files_processed
+    new_run.findings = f"{nodes} entities, {edges} edges, {alerts_count} alerts"
+    new_run.duration = "Pipeline complete"
+    db.commit()
+
+    res["run"] = {
+        "id": run_id,
+        "date": new_run.created_at.strftime('%d %b %Y, %H:%M'),
+        "status": new_run.status,
+        "files": files_processed,
+        "findings": new_run.findings,
+        "duration": new_run.duration,
+    }
+
+    return res
 
 @app.get("/api/graph")
 async def get_graph(case_id: str, db: Session = Depends(get_postgres_db)):
@@ -87,10 +109,31 @@ async def get_graph(case_id: str, db: Session = Depends(get_postgres_db)):
 
 @app.get("/api/players")
 async def get_players(case_id: str, db: Session = Depends(get_postgres_db)):
-    # Simple players logic: return PERSONs, ordered by number of connections (rudimentary)
-    # Ideally we'd store PageRank in DB, but for now just returning entities.
-    persons = db.query(Entity).filter(Entity.case_id == case_id, Entity.type == "PERSON").limit(50).all()
-    return [{"id": p.id, "name": p.name, "type": p.type} for p in persons]
+    persons = db.query(Entity).filter(Entity.case_id == case_id, Entity.type == "PERSON").all()
+    players = []
+    for p in persons:
+        connections = (
+            db.query(Relationship)
+            .filter(Relationship.case_id == case_id)
+            .filter(or_(Relationship.source_id == p.id, Relationship.target_id == p.id))
+            .count()
+        )
+        risk_score = round(min(100.0, max(10.0, connections * 10.0)), 1)
+        players.append({
+            "id": p.id,
+            "name": p.name,
+            "type": p.type,
+            "connections": connections,
+            "risk_score": risk_score,
+            "threat_level": (
+                "Critical" if risk_score >= 80 else
+                "High" if risk_score >= 60 else
+                "Medium" if risk_score >= 40 else
+                "Low"
+            )
+        })
+    players.sort(key=lambda p: p["risk_score"], reverse=True)
+    return players
 
 @app.get("/api/alerts")
 async def get_alerts(case_id: str, db: Session = Depends(get_postgres_db)):
@@ -142,26 +185,70 @@ async def get_ground_truth(case_id: str):
     
     canonical_mock = {e.id: {"name": e.name, "type": e.type} for e in entities}
     stats = validate_against_ground_truth(case_path(case_id), canonical_mock)
-    
-    return {"match_percentage": stats["match_percentage"]}
+
+    return {
+        "match_percent": stats.get("match_percentage", 0),
+        "expected": stats.get("total_gt_entities", 0),
+        "detected": stats.get("found_gt_entities", 0),
+    }
 
 @app.post("/api/upload/{case_id}")
-async def upload_file(case_id: str, file: UploadFile = File(...), db: Session = Depends(get_postgres_db)):
-    file_location = f"uploads/{file.filename}"
-    with open(file_location, "wb+") as file_object:
-        shutil.copyfileobj(file.file, file_object)
+async def upload_file(case_id: str, files: List[UploadFile] = File(...), db: Session = Depends(get_postgres_db)):
+    from app.config import case_path
     
-    size_mb = os.path.getsize(file_location) / (1024 * 1024)
-    file_record = UploadedFile(
-        case_id=case_id, 
-        name=file.filename, 
-        size_mb=round(size_mb, 2), 
-        type=file.filename.split('.')[-1].upper(),
-        path=file_location
-    )
-    db.add(file_record)
+    target_dir = case_path(case_id)
+    uploaded_names = []
+    
+    for file in files:
+        if not file.filename: continue
+            
+        file_location = target_dir / file.filename
+        file_location.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(file_location, "wb+") as file_object:
+            shutil.copyfileobj(file.file, file_object)
+        
+        size_mb = os.path.getsize(file_location) / (1024 * 1024)
+        
+        existing = db.query(UploadedFile).filter(UploadedFile.case_id == case_id, UploadedFile.name == file.filename).first()
+        if not existing:
+            file_record = UploadedFile(
+                case_id=case_id, 
+                name=file.filename, 
+                size_mb=round(size_mb, 2), 
+                type=file.filename.split('.')[-1].upper(),
+                path=str(file_location)
+            )
+            db.add(file_record)
+        uploaded_names.append(file.filename)
+        
     db.commit()
-    return {"status": "success", "filename": file.filename}
+    return {"status": "success", "uploaded": len(uploaded_names)}
+
+@app.delete("/api/clear/{case_id}")
+async def clear_case(case_id: str, db: Session = Depends(get_postgres_db)):
+    try:
+        from app.database.mongodb import db as mongo_client
+        if mongo_client is not None:
+            mongo_client.db[f"{case_id}_parsed_data"].drop()
+        
+        # Postgres Cleanup
+        db.query(Alert).filter(Alert.case_id == case_id).delete()
+        db.query(Relationship).filter(Relationship.case_id == case_id).delete()
+        db.query(Entity).filter(Entity.case_id == case_id).delete()
+        db.query(AnalysisRun).filter(AnalysisRun.case_id == case_id).delete()
+        db.query(UploadedFile).filter(UploadedFile.case_id == case_id).delete()
+        db.commit()
+        
+        # Disk Cleanup
+        from app.config import case_path
+        path = case_path(case_id)
+        if path.exists():
+            shutil.rmtree(path)
+            
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/files/{case_id}")
 async def get_files(case_id: str, db: Session = Depends(get_postgres_db)):

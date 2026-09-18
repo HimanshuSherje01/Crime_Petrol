@@ -110,11 +110,95 @@ def run_pipeline(case_id: str, db: Session, mongo_db):
         
     db.commit()
     print("Pipeline completed successfully.")
-    
+
+    # Serialize the graph in the format consumed by the frontend (Cytoscape-style)
+    nodes = [
+        {"data": {"id": e_id, "label": e_data["name"], "type": e_data["type"]}}
+        for e_id, e_data in canonical.items()
+    ]
+    edges = [
+        {"data": {
+            "source": u,
+            "target": v,
+            "label": data.get("type", "ASSOCIATED_WITH"),
+            "weight": data.get("weight", 1.0),
+        }}
+        for u, v, data in G.edges(data=True)
+    ]
+
+    players = _build_players(canonical, analytics_res)
+
+    # Files the pipeline actually parsed (for the Uploaded Files panel)
+    seen, files_processed = set(), []
+    for doc in parsed_data:
+        name = doc["file"]
+        if name not in seen:
+            seen.add(name)
+            files_processed.append({
+                "name": name,
+                "type": doc["source_type"],
+                "status": "Parsed",
+            })
+
     return {
-        "status": "success",
-        "nodes": G.number_of_nodes(),
-        "edges": G.number_of_edges(),
-        "alerts_count": len(alerts),
-        "gt_match": gt_stats["match_percentage"]
+        "case_id": case_id,
+        "graph": {"nodes": nodes, "edges": edges},
+        "players": players,
+        "alerts": alerts,
+        "entities": [
+            {"id": e_id, "name": e_data["name"], "type": e_data["type"]}
+            for e_id, e_data in canonical.items()
+        ],
+        "ground_truth": {
+            "match_percent": gt_stats.get("match_percentage", 0),
+            "expected": gt_stats.get("total_gt_entities", 0),
+            "detected": gt_stats.get("found_gt_entities", 0),
+        },
+        "files_processed": files_processed,
+        "metadata": {
+            "nodes": G.number_of_nodes(),
+            "edges": G.number_of_edges(),
+            "alerts_count": len(alerts),
+        },
     }
+
+
+def _build_players(canonical_entities: dict, analytics_results: dict) -> list:
+    """Build player objects from PERSON entities, ranked by a blended risk score."""
+    players = []
+    for e_id, e_data in canonical_entities.items():
+        if e_data.get("type") != "PERSON":
+            continue
+        m = analytics_results.get(e_id) or {}
+        players.append({
+            "id": e_id,
+            "name": e_data["name"],
+            "type": e_data["type"],
+            "connections": m.get("degree", 0),
+            "pagerank": round(m.get("pagerank", 0), 4),
+            "betweenness": round(m.get("betweenness", 0), 4),
+            "community": m.get("community", 0),
+        })
+
+    if not players:
+        return players
+
+    max_pr = max((p["pagerank"] for p in players), default=0) or 1
+    max_bet = max((p["betweenness"] for p in players), default=0) or 1
+    max_conn = max((p["connections"] for p in players), default=0) or 1
+
+    for p in players:
+        pr_n = p["pagerank"] / max_pr
+        bet_n = p["betweenness"] / max_bet
+        conn_n = p["connections"] / max_conn
+        score = round(min(100.0, 100 * (0.5 * pr_n + 0.3 * bet_n + 0.2 * conn_n)), 1)
+        p["risk_score"] = score
+        p["threat_level"] = (
+            "Critical" if score >= 80 else
+            "High" if score >= 60 else
+            "Medium" if score >= 40 else
+            "Low"
+        )
+
+    players.sort(key=lambda p: p["risk_score"], reverse=True)
+    return players

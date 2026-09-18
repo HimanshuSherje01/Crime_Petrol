@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { 
-  LayoutDashboard, FolderOpen, Network, Users, MessageSquare, 
-  MapPin, DollarSign, Car, FileText, Video, FileBarChart, 
-  Search, Bell, Settings, Target, ChevronDown, ChevronRight 
+import {
+  LayoutDashboard, FolderOpen, Network, Users, MessageSquare,
+  MapPin, DollarSign, Car, FileText, Video, FileBarChart,
+  Search, Bell, Settings, Target, ChevronDown, ChevronRight, Loader2, History
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import clsx from 'clsx'
 
 export default function DashboardLayout() {
-  const { user, signOut, cases, selectedCase, selectCase, fetchCases, alerts } = useStore()
+  const { user, signOut, cases, selectedCase, selectCase, fetchCases, alerts, analyzeState } = useStore()
   const [casesOpen, setCasesOpen] = useState(true)
   const navigate = useNavigate()
   const location = useLocation()
@@ -23,23 +23,24 @@ export default function DashboardLayout() {
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Cases', path: '#', icon: FolderOpen, isSection: true, open: casesOpen, setOpen: setCasesOpen,
       children: [
-        { name: 'All Cases', path: '/cases' },
-        { name: 'New Case', path: '/cases/new' },
+        /* { name: 'All Cases', path: '/cases' },
+        { name: 'New Case', path: '/cases/new' }, */
         { name: 'Import & Analyze', path: '/case' },
-        { name: 'Case Workspace', path: '/workspace' },
+       /*  { name: 'Case Workspace', path: '/workspace' }, */
       ]
     },
     { name: 'Network', path: '/network', icon: Network },
-    /* { name: 'Players', path: '/players', icon: Users },
-    { name: 'Communications', path: '/communications', icon: MessageSquare },
+    { name: 'Players', path: '/players', icon: Users },
+    { name: 'Recent Analyses', path: '/recent-analyses', icon: History },
+    /* { name: 'Communications', path: '/communications', icon: MessageSquare },
     { name: 'Locations', path: '/locations', icon: MapPin },
     { name: 'Finances', path: '/finances', icon: DollarSign },
     { name: 'Vehicles', path: '/vehicles', icon: Car },
     { name: 'Evidence', path: '/evidence', icon: FileText },
     { name: 'CCTV', path: '/cctv', icon: Video },
     { name: 'Reports', path: '/reports', icon: FileBarChart },
-    { name: 'Search', path: '/search', icon: Search },
-    { name: 'Alerts', path: '/alerts', icon: Bell, badge: alerts.length || 12 }, */
+    { name: 'Search', path: '/search', icon: Search }, */
+    { name: 'Alerts', path: '/alerts', icon: Bell, badge: alerts.length || 0 },
     { name: 'Settings', path: '/settings', icon: Settings },
   ]
 
@@ -130,12 +131,33 @@ export default function DashboardLayout() {
         {/* Top Header */}
         <header className="h-14 border-b border-border bg-[#060913]/90 flex items-center justify-between px-4 backdrop-blur-md z-10 shrink-0">
           
-          <div className="flex items-center space-x-2 text-gray-400 text-xs">
-            <span className="cursor-pointer hover:text-gray-300">Case Workspace</span>
+          <div className="flex items-center space-x-3 text-gray-400 text-xs">
+            <span className="cursor-pointer hover:text-gray-300" onClick={() => navigate('/case')}>Case Workspace</span>
             <ChevronRight className="w-3 h-3" />
-            <div className="flex items-center space-x-1 cursor-pointer hover:text-white">
-              <span className="text-white">Import & Analyze</span>
-              <ChevronDown className="w-3 h-3" />
+
+            {/* Dynamic case selector */}
+            <div className="flex items-center space-x-2">
+              <label className="text-[10px] uppercase tracking-wider text-gray-500">Case</label>
+              <select
+                value={selectedCase || ''}
+                onChange={e => selectCase(e.target.value)}
+                disabled={analyzeState === 'loading'}
+                className="bg-[#030509] border border-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-primary/50 max-w-[240px] disabled:opacity-50 cursor-pointer"
+                title="Select a case to analyze"
+              >
+                {cases.length === 0 && <option value="">No cases available</option>}
+                {cases.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {analyzeState === 'loading' && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />}
+              {analyzeState === 'ready' && (
+                <span className="text-success flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 bg-success rounded-full"></span>
+                  <span className="text-[10px]">Analyzed</span>
+                </span>
+              )}
+              {analyzeState === 'error' && (
+                <span className="text-danger text-[10px]">Failed</span>
+              )}
             </div>
           </div>
 
@@ -152,9 +174,11 @@ export default function DashboardLayout() {
 
           {/* Right Topbar actions */}
           <div className="flex items-center space-x-5">
-            <button className="relative text-gray-400 hover:text-white transition-colors">
+            <button className="relative text-gray-400 hover:text-white transition-colors" onClick={() => navigate('/alerts')}>
               <Bell className="w-4 h-4" />
-              <span className="absolute -top-1 -right-1.5 w-3 h-3 bg-danger rounded-full ring-2 ring-[#060913] text-[8px] flex items-center justify-center text-white font-bold">3</span>
+              {alerts.length > 0 && (
+                <span className="absolute -top-1 -right-1.5 w-3 h-3 bg-danger rounded-full ring-2 ring-[#060913] text-[8px] flex items-center justify-center text-white font-bold">{alerts.length}</span>
+              )}
             </button>
 
             <div className="flex items-center space-x-3 pl-5 border-l border-border/50">

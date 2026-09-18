@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Filter, X, Search, User, Phone, MapPin, Car, Building, FileText, Camera, Loader2, Maximize2, RotateCw, ZoomIn, Hand, RotateCcw, ChevronDown, CheckCircle2 } from 'lucide-react'
+import { Filter, X, Search, User, Phone, MapPin, Car, Building, FileText, Camera, Loader2, Maximize2, RotateCw, ZoomIn, Hand, RotateCcw, ChevronDown } from 'lucide-react'
 import ForceGraph3D from 'react-force-graph-3d'
 import { useStore } from '../store/useStore'
 import clsx from 'clsx'
@@ -37,12 +37,12 @@ const NODE_TYPES_CONFIG = [
 ]
 
 export default function Network() {
-  const { graphData, dashboardStats, fetchEntityDetails } = useStore()
+  const { graphData, dashboardStats, fetchEntityDetails, players, selectedCase, analyzeState, analyzeCase } = useStore()
   const [selectedNode, setSelectedNode] = useState(null)
   const [nodeDetails, setNodeDetails] = useState(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [visibleTypes, setVisibleTypes] = useState(new Set(NODE_TYPES_CONFIG.map(t => t.id)))
-  
+
   const graphRef = useRef()
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const containerRef = useRef()
@@ -60,9 +60,32 @@ export default function Network() {
     return () => observer.disconnect()
   }, [])
 
+  // Relationship counts derived from the live graph data
+  const relationshipCounts = useMemo(() => {
+    const counts = {}
+    graphData?.edges?.forEach(e => {
+      const label = e.data?.label || 'ASSOCIATED_WITH'
+      counts[label] = (counts[label] || 0) + 1
+    })
+    return Object.entries(counts).map(([label, count]) => ({ label, count }))
+  }, [graphData])
+
+  const playerRiskById = useMemo(() => {
+    const map = {}
+    players.forEach(p => { map[p.id] = p })
+    return map
+  }, [players])
+
   const gData = useMemo(() => {
     if (!graphData || !graphData.nodes) return { nodes: [], links: [] }
-    
+
+    const nodeDegree = {}
+    graphData.edges.forEach(e => {
+      nodeDegree[e.data.source] = (nodeDegree[e.data.source] || 0) + 1
+      nodeDegree[e.data.target] = (nodeDegree[e.data.target] || 0) + 1
+    })
+    const maxDeg = Math.max(1, ...Object.values(nodeDegree))
+
     const filteredNodes = graphData.nodes
       .filter(n => visibleTypes.has(n.data.type?.toUpperCase()))
       .map(n => ({
@@ -70,11 +93,11 @@ export default function Network() {
         name: n.data.label,
         group: n.data.type?.toUpperCase(),
         color: NODE_COLORS[n.data.type?.toUpperCase()] || NODE_COLORS.DEFAULT,
-        val: 1.5
+        val: 1.5 + (nodeDegree[n.data.id] || 0) / maxDeg
       }))
-      
+
     const nodeIds = new Set(filteredNodes.map(n => n.id))
-    
+
     const filteredLinks = graphData.edges
       .filter(e => nodeIds.has(e.data.source) && nodeIds.has(e.data.target))
       .map(e => ({
@@ -155,28 +178,38 @@ export default function Network() {
         </div>
 
         <div className="mb-6">
-          <h3 className="text-[10px] font-semibold text-gray-500 mb-3 uppercase tracking-widest">Date Range</h3>
-          <div className="text-[9px] text-gray-400 mb-2 font-mono flex justify-between">
-            <span>01 JAN 2024</span>
-            <span>31 DEC 2024</span>
-          </div>
-          <div className="w-full h-1 bg-[#1E293B] rounded-full relative mt-3">
-            <div className="absolute left-1/4 right-1/4 h-full bg-primary rounded-full"></div>
-            <div className="absolute left-1/4 top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border border-primary rounded-full cursor-pointer hover:scale-125 transition-transform"></div>
-            <div className="absolute right-1/4 top-1/2 -translate-y-1/2 translate-x-1/2 w-2.5 h-2.5 bg-white border border-primary rounded-full cursor-pointer hover:scale-125 transition-transform"></div>
+          <h3 className="text-[10px] font-semibold text-gray-500 mb-3 uppercase tracking-widest">Case Scope</h3>
+          <div className="text-[10px] text-gray-400 space-y-1">
+            <div className="flex items-center justify-between">
+              <span>Case</span>
+              <span className="text-white font-mono truncate max-w-[150px]">{selectedCase || '—'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Nodes</span>
+              <span className="text-white font-mono">{gData.nodes.length}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Links</span>
+              <span className="text-white font-mono">{gData.links.length}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Ground Truth</span>
+              <span className="text-success font-mono">{dashboardStats?.gtMatch ? `${dashboardStats.gtMatch}%` : 'N/A'}</span>
+            </div>
           </div>
         </div>
 
         <div className="mb-6">
           <h3 className="text-[10px] font-semibold text-gray-500 mb-3 uppercase tracking-widest">Relationship Type</h3>
-          <div className="space-y-2">
-            <FilterCheckbox label="Calls" count={71} icon={null} checked />
-            <FilterCheckbox label="Location Proximity" count={46} icon={null} checked />
-            <FilterCheckbox label="Financial Transfer" count={38} icon={null} checked />
-            <FilterCheckbox label="Co-travel" count={24} icon={null} checked />
-            <FilterCheckbox label="Communication" count={52} icon={null} checked />
-            <FilterCheckbox label="Common Event" count={29} icon={null} checked />
-          </div>
+          {relationshipCounts.length === 0 ? (
+            <div className="text-[10px] text-gray-600">No relationships in the current graph.</div>
+          ) : (
+            <div className="space-y-2">
+              {relationshipCounts.map(r => (
+                <FilterCheckbox key={r.label} label={r.label} count={r.count} icon={null} checked />
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
@@ -221,7 +254,41 @@ export default function Network() {
 
         {/* 3D Graph */}
         <div className="flex-1 relative" ref={containerRef}>
-          {gData.nodes.length > 0 ? (
+          {analyzeState === 'idle' && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">
+              <div className="w-14 h-14 rounded-full bg-[#0A0F1C] border border-[#1E293B] flex items-center justify-center pointer-events-auto">
+                <Filter className="w-6 h-6 text-primary" />
+              </div>
+              <p className="text-sm text-gray-400">Click to Analyze</p>
+              <p className="text-[11px] max-w-sm text-center -mt-2">
+                Case <span className="text-primary font-mono">{selectedCase}</span> has no graph yet. Run the analysis pipeline to build the criminal network.
+              </p>
+              <button
+                onClick={() => analyzeCase(selectedCase)}
+                className="bg-primary text-black font-semibold px-4 py-2 rounded-lg text-xs hover:bg-primary-hover transition-colors pointer-events-auto"
+              >
+                Run Analysis
+              </button>
+            </div>
+          )}
+          {analyzeState === 'loading' && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-3">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+              <p className="text-sm text-gray-400">Building network graph...</p>
+            </div>
+          )}
+          {analyzeState === 'error' && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-3">
+              <Loader2 className="w-8 h-8 text-danger" />
+              <p className="text-sm text-gray-400">Analysis failed. Retry from Import & Analyze.</p>
+            </div>
+          )}
+          {analyzeState === 'ready' && gData.nodes.length === 0 && (
+            <div className="flex items-center justify-center h-full text-gray-500">
+              No graph data available matching filters.
+            </div>
+          )}
+          {analyzeState === 'ready' && gData.nodes.length > 0 && (
             <ForceGraph3D
               ref={graphRef}
               width={dimensions.width}
@@ -237,10 +304,6 @@ export default function Network() {
               showNavInfo={false}
               enableNodeDrag={false}
             />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              No graph data available matching filters.
-            </div>
           )}
         </div>
 
@@ -353,82 +416,65 @@ export default function Network() {
               </div>
             ) : nodeDetails && activeTab === 'Overview' ? (
               <div className="space-y-4 text-[11px]">
-                
                 {/* Dense Data Grid */}
                 <div className="grid grid-cols-[100px_1fr] gap-y-2">
+                  <div className="text-gray-500">Entity ID</div>
+                  <div className="text-white font-mono text-[10px] break-all">{nodeDetails.id}</div>
+
                   <div className="text-gray-500">Full Name</div>
                   <div className="text-white">{nodeDetails.name}</div>
-                  
-                  {selectedNode.group === 'PERSON' && (
-                    <>
-                      <div className="text-gray-500">Aliases</div>
-                      <div className="text-gray-300">R.K. | Ravi Bhai | Sonu (Mocked)</div>
-                      
-                      <div className="text-gray-500">Date of Birth</div>
-                      <div className="text-gray-300">14 Mar 1988 (Age 38)</div>
-                      
-                      <div className="text-gray-500 pt-1">Known Addresses</div>
-                      <div className="text-gray-300 pt-1 leading-relaxed">
-                        • Karol Bagh, New Delhi<br/>
-                        • Meerut, Uttar Pradesh<br/>
-                        • Rohini, New Delhi
-                      </div>
-                      
-                      <div className="text-gray-500 pt-1">Phone Numbers</div>
-                      <div className="text-gray-300 font-mono pt-1 leading-relaxed">
-                        • +91 98765 43210<br/>
-                        • +91 98111 22334<br/>
-                        • +91 91234 56789
-                      </div>
 
-                      <div className="text-gray-500 pt-1">Associated Vehicles</div>
-                      <div className="text-gray-300 pt-1">HR 26 XX 7788 (Black Thar)</div>
+                  <div className="text-gray-500">Type</div>
+                  <div>
+                    <span
+                      className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border"
+                      style={{
+                        backgroundColor: `${selectedNode.color}15`,
+                        borderColor: `${selectedNode.color}40`,
+                        color: selectedNode.color
+                      }}
+                    >
+                      {selectedNode.group}
+                    </span>
+                  </div>
+
+                  <div className="text-gray-500">Connections</div>
+                  <div className="text-gray-300 font-mono">{nodeDetails.connections}</div>
+
+                  {selectedNode.group === 'PERSON' && playerRiskById[selectedNode.id] && (
+                    <>
+                      <div className="text-gray-500 pt-1">Risk Score</div>
+                      <div className="text-gray-300 pt-1">
+                        <PlayerRisk player={playerRiskById[selectedNode.id]} />
+                      </div>
+                      <div className="text-gray-500">Threat Level</div>
+                      <div className="text-gray-300 capitalize">{playerRiskById[selectedNode.id].threat_level}</div>
+                      {playerRiskById[selectedNode.id].community !== undefined && (
+                        <>
+                          <div className="text-gray-500">Community</div>
+                          <div className="text-gray-300 font-mono">#{playerRiskById[selectedNode.id].community}</div>
+                        </>
+                      )}
                     </>
                   )}
-
-                  <div className="text-gray-500 pt-1">Linked Cases</div>
-                  <div className="text-gray-300 pt-1 leading-relaxed">
-                    • FIR-1023 (Jewelry Heist)<br/>
-                    • PIR-998 (Armed Robbery)
-                  </div>
                 </div>
 
                 <div className="my-4 border-t border-[#1E293B]"></div>
 
-                <div className="grid grid-cols-[100px_1fr] gap-y-3 items-center">
-                  <div className="text-gray-500">Risk Score</div>
-                  <div className="flex items-center space-x-3">
-                    <div className="flex-1 h-1.5 bg-[#030509] rounded-full overflow-hidden border border-[#1E293B]">
-                      <div className="h-full bg-danger w-[87%]"></div>
-                    </div>
-                    <span className="text-gray-300 font-mono text-[10px]">87 / 100</span>
+                {selectedNode.group === 'PERSON' && playerRiskById[selectedNode.id] ? (
+                  <div className="grid grid-cols-[100px_1fr] gap-y-3 items-center">
+                    <div className="text-gray-500">Pagerank</div>
+                    <div className="text-gray-300 font-mono text-[10px]">{playerRiskById[selectedNode.id].pagerank}</div>
+                    <div className="text-gray-500">Betweenness</div>
+                    <div className="text-gray-300 font-mono text-[10px]">{playerRiskById[selectedNode.id].betweenness}</div>
+                    <div className="text-gray-500">Linked Nodes</div>
+                    <div className="text-gray-300 font-mono text-[10px]">{nodeDetails.connections}</div>
                   </div>
-
-                  <div className="text-gray-500">Threat Level</div>
-                  <div className="flex items-center space-x-1.5 text-danger font-medium">
-                    <span className="w-1.5 h-1.5 bg-danger rounded-full"></span>
-                    <span>High</span>
-                  </div>
-
-                  <div className="text-gray-500">Status</div>
-                  <div className="flex items-center space-x-1.5 text-success font-medium">
-                    <span className="w-1.5 h-1.5 bg-success rounded-full"></span>
-                    <span>Active</span>
-                  </div>
-
-                  <div className="text-gray-500 self-start mt-1">Tags</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <span className="px-1.5 py-0.5 border border-primary/30 text-primary bg-primary/10 rounded text-[9px]">Organized Crime</span>
-                    <span className="px-1.5 py-0.5 border border-primary/30 text-primary bg-primary/10 rounded text-[9px]">Repeat Offender</span>
-                    <button className="px-1.5 py-0.5 border border-[#1E293B] text-gray-400 bg-[#030509] hover:text-white rounded text-[9px]">+</button>
-                  </div>
-                </div>
-
-                <div className="mt-4 p-3 border border-[#1E293B] bg-[#030509] rounded-lg text-gray-400 leading-relaxed relative group">
-                  Key suspected member in the jewelry heist, frequent communication with known associates. Financial transactions indicate large cash movements.
-                  <button className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-primary"><Maximize2 className="w-3 h-3" /></button>
-                </div>
-
+                ) : (
+                  <p className="text-gray-500 text-[10px] leading-relaxed">
+                    No risk analytics available for this entity type. Switch to a PERSON node to view risk scoring and network metrics.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="text-gray-500 text-center py-4">Select the Overview tab to view details.</div>
@@ -444,17 +490,30 @@ function FilterCheckbox({ label, count, icon: Icon, color, checked, onChange }) 
   return (
     <label className="flex items-center justify-between cursor-pointer group py-0.5">
       <div className="flex items-center space-x-2">
-        <input 
-          type="checkbox" 
+        <input
+          type="checkbox"
           checked={checked}
           onChange={onChange}
-          className="rounded-sm bg-[#030509] border-border text-primary focus:ring-primary focus:ring-offset-0 focus:ring-1 cursor-pointer" 
+          className="rounded-sm bg-[#030509] border-border text-primary focus:ring-primary focus:ring-offset-0 focus:ring-1 cursor-pointer"
         />
         {Icon && <Icon className={`w-3 h-3 ${color}`} />}
         <span className="text-gray-400 group-hover:text-gray-200 transition-colors text-[11px]">{label}</span>
       </div>
       <span className="text-gray-600 text-[10px] font-mono">{count}</span>
     </label>
+  )
+}
+
+function PlayerRisk({ player }) {
+  const score = player.risk_score ?? 0
+  const color = score >= 70 ? 'bg-danger' : score >= 40 ? 'bg-amber-500' : 'bg-success'
+  return (
+    <div className="flex items-center space-x-2">
+      <div className="w-24 h-1.5 bg-[#030509] rounded-full overflow-hidden border border-[#1E293B]">
+        <div className={clsx("h-full", color)} style={{ width: `${Math.min(100, Math.max(0, score))}%` }}></div>
+      </div>
+      <span className={clsx("font-mono text-[10px]", score >= 70 ? 'text-danger' : score >= 40 ? 'text-amber-500' : 'text-success')}>{Math.round(score)}</span>
+    </div>
   )
 }
 
