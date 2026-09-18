@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { 
   UploadCloud, Play, CheckCircle2, Circle, Clock, Loader2, 
   MoreHorizontal, FileText, FileSpreadsheet, Film, LayoutDashboard, 
@@ -9,10 +9,25 @@ import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 
 export default function CaseImport() {
-  const { cases, selectedCase, selectCase, analyzeCase, loading } = useStore()
+  const { cases, selectedCase, selectCase, analyzeCase, loading, uploadFile, fetchFiles, fetchAnalyses, uploadedFiles, recentAnalyses } = useStore()
   const [localCase, setLocalCase] = useState(selectedCase || cases[0] || 'mock_case_id')
   const [analyzed, setAnalyzed] = useState(false)
+  const fileInputRef = useRef()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (localCase) {
+      fetchFiles(localCase)
+      fetchAnalyses(localCase)
+    }
+  }, [localCase, fetchFiles, fetchAnalyses])
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0]
+    if (file && localCase) {
+      await uploadFile(localCase, file)
+    }
+  }
 
   const handleAnalyze = async () => {
     if (!localCase) return
@@ -105,7 +120,17 @@ export default function CaseImport() {
                   {cases.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
 
-                <button className="px-6 py-2 border border-primary text-primary rounded hover:bg-primary/10 transition-colors font-medium">
+                {/* Hidden file input */}
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileUpload} 
+                  className="hidden" 
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-6 py-2 border border-primary text-primary rounded hover:bg-primary/10 transition-colors font-medium"
+                >
                   Browse Files
                 </button>
 
@@ -217,9 +242,9 @@ export default function CaseImport() {
           {/* Uploaded Files Table */}
           <div className="glass-panel rounded-lg p-4 flex-1 flex flex-col">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-white font-medium">Uploaded Files (8)</h3>
+              <h3 className="text-white font-medium">Uploaded Files ({(uploadedFiles || []).length})</h3>
               <div className="flex space-x-2">
-                <button className="text-primary border border-primary/30 bg-primary/5 px-2 py-1 rounded flex items-center space-x-1 hover:bg-primary/10">
+                <button onClick={() => fileInputRef.current?.click()} className="text-primary border border-primary/30 bg-primary/5 px-2 py-1 rounded flex items-center space-x-1 hover:bg-primary/10 cursor-pointer">
                   <span>+</span><span>Add Files</span>
                 </button>
                 <button className="text-danger border border-danger/30 bg-danger/5 px-2 py-1 rounded flex items-center space-x-1 hover:bg-danger/10">
@@ -238,12 +263,12 @@ export default function CaseImport() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                  <FileRow name="FIR_1023_JewelryHeist.pdf" size="2.4 MB" status="Parsed" color="text-success" />
-                  <FileRow name="CCTV_Mall_Entrance.mp4" size="256.3 MB" status="Processing 42%" color="text-primary" />
-                  <FileRow name="Call_Detail_Records.csv" size="12.8 MB" status="Parsed" color="text-success" />
-                  <FileRow name="Bank_Transactions.xlsx" size="5.1 MB" status="Parsed" color="text-success" />
-                  <FileRow name="Suspects_List.docx" size="1.2 MB" status="Parsed" color="text-success" />
-                  <FileRow name="Crime_Scene_Photos.zip" size="48.6 MB" status="Queued" color="text-gray-400" />
+                  {!(uploadedFiles && uploadedFiles.length > 0) && (
+                    <tr><td colSpan="3" className="py-4 text-center text-gray-600">No files uploaded yet.</td></tr>
+                  )}
+                  {uploadedFiles?.map(f => (
+                    <FileRow key={f.id} name={f.name} size={f.size} status={f.status} color="text-success" />
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -293,26 +318,24 @@ export default function CaseImport() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/30">
-            <tr>
-              <td className="py-2 text-gray-300">RUN-2026-0918-01</td>
-              <td className="py-2">18 Sep 2026, 10:24</td>
-              <td className="py-2">8 files</td>
-              <td className="py-2 truncate max-w-[150px]">All</td>
-              <td className="py-2 text-primary flex items-center space-x-1.5"><span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span><span>Running</span></td>
-              <td className="py-2">-</td>
-              <td className="py-2 text-gray-500">12m 14s</td>
-              <td className="py-2 text-right text-primary cursor-pointer hover:underline">View</td>
-            </tr>
-            <tr>
-              <td className="py-2 text-gray-300">RUN-2026-0917-02</td>
-              <td className="py-2">17 Sep 2026, 16:03</td>
-              <td className="py-2">5 files</td>
-              <td className="py-2 truncate max-w-[150px]">Documents, Calls, Locations</td>
-              <td className="py-2 text-success flex items-center space-x-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success"></span><span>Completed</span></td>
-              <td className="py-2 text-white">28 entities</td>
-              <td className="py-2 text-gray-500">4m 32s</td>
-              <td className="py-2 text-right text-primary cursor-pointer hover:underline">View</td>
-            </tr>
+            {!(recentAnalyses && recentAnalyses.length > 0) && (
+              <tr><td colSpan="8" className="py-4 text-center text-gray-600">No analyses run for this case yet.</td></tr>
+            )}
+            {recentAnalyses?.map(r => (
+              <tr key={r.id}>
+                <td className="py-2 text-gray-300">{r.id}</td>
+                <td className="py-2">{r.date}</td>
+                <td className="py-2">-</td>
+                <td className="py-2 truncate max-w-[150px]">All</td>
+                <td className={clsx("py-2 flex items-center space-x-1.5", r.status === 'Running' ? 'text-primary' : 'text-success')}>
+                  <span className={clsx("w-1.5 h-1.5 rounded-full", r.status === 'Running' ? 'bg-primary animate-pulse' : 'bg-success')}></span>
+                  <span>{r.status}</span>
+                </td>
+                <td className="py-2">{r.findings}</td>
+                <td className="py-2 text-gray-500">{r.duration}</td>
+                <td className="py-2 text-right text-primary cursor-pointer hover:underline">View</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

@@ -30,7 +30,7 @@ export default function DashboardLayout() {
       ]
     },
     { name: 'Network', path: '/network', icon: Network },
-    { name: 'Players', path: '/players', icon: Users },
+    /* { name: 'Players', path: '/players', icon: Users },
     { name: 'Communications', path: '/communications', icon: MessageSquare },
     { name: 'Locations', path: '/locations', icon: MapPin },
     { name: 'Finances', path: '/finances', icon: DollarSign },
@@ -39,7 +39,7 @@ export default function DashboardLayout() {
     { name: 'CCTV', path: '/cctv', icon: Video },
     { name: 'Reports', path: '/reports', icon: FileBarChart },
     { name: 'Search', path: '/search', icon: Search },
-    { name: 'Alerts', path: '/alerts', icon: Bell, badge: alerts.length || 12 },
+    { name: 'Alerts', path: '/alerts', icon: Bell, badge: alerts.length || 12 }, */
     { name: 'Settings', path: '/settings', icon: Settings },
   ]
 

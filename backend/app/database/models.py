@@ -33,3 +33,37 @@ class Alert(Base):
     description = Column(String)
     entity_id = Column(String, ForeignKey("entities.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class Case(Base):
+    __tablename__ = "cases"
+
+    id = Column(String, primary_key=True, index=True) # E.g., CH-2026-1023
+    name = Column(String)
+    priority = Column(String, default="Medium")
+    status = Column(String, default="Active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class UploadedFile(Base):
+    __tablename__ = "uploaded_files"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    case_id = Column(String, index=True)
+    name = Column(String)
+    size_mb = Column(Float)
+    type = Column(String)
+    status = Column(String, default="Parsed")
+    path = Column(String) # Path on disk or cloud
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class AnalysisRun(Base):
+    __tablename__ = "analysis_runs"
+
+    id = Column(String, primary_key=True, index=True) # RUN-2026...
+    case_id = Column(String, index=True)
+    status = Column(String, default="Running")
+    files_processed = Column(Integer, default=0)
+    modules = Column(String, default="All")
+    findings = Column(String, default="-")
+    duration = Column(String, default="-")
+    created_at = Column(DateTime, default=datetime.utcnow)
+

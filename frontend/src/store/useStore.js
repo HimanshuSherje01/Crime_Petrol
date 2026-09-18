@@ -25,6 +25,11 @@ export const useStore = create((set, get) => ({
     try {
       const res = await axios.get(`${API_URL}/cases`)
       set({ cases: res.data })
+      
+      // Auto-select first case if none is selected (prevents "No Case Selected" on reload)
+      if (res.data.length > 0 && !get().selectedCase) {
+        get().selectCase(res.data[0])
+      }
     } catch (e) {
       console.error(e)
     }
@@ -77,5 +82,48 @@ export const useStore = create((set, get) => ({
       console.error(e)
       return null
     }
+  },
+
+  uploadFile: async (caseId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      await axios.post(`${API_URL}/upload/${caseId}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      // Refresh files list after upload
+      await get().fetchFiles(caseId)
+    } catch (e) {
+      console.error(e)
+    }
+  },
+
+  fetchFiles: async (caseId) => {
+    try {
+      const res = await axios.get(`${API_URL}/files/${caseId}`)
+      set({ uploadedFiles: res.data }) // Need to add uploadedFiles to initial state
+    } catch (e) {
+      console.error(e)
+    }
+  },
+
+  fetchAnalyses: async (caseId) => {
+    try {
+      const res = await axios.get(`${API_URL}/analyses/${caseId}`)
+      set({ recentAnalyses: res.data }) // Need to add recentAnalyses to initial state
+    } catch (e) {
+      console.error(e)
+    }
+  },
+
+  fetchEntitiesByType: async (type) => {
+    try {
+      const res = await axios.get(`${API_URL}/entities/type/${type}`)
+      return res.data
+    } catch (e) {
+      console.error(e)
+      return []
+    }
   }
 }))
+

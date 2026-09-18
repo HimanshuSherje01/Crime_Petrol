@@ -11,6 +11,8 @@ import Network from './pages/Network'
 import Players from './pages/Players'
 import Alerts from './pages/Alerts'
 import CaseImport from './pages/CaseImport'
+import EntityList from './pages/EntityList'
+import Settings from './pages/Settings'
 
 export default function App() {
   const { user, setUser } = useStore()
@@ -40,6 +42,16 @@ export default function App() {
             <Route path="/players" element={<Players />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/case" element={<CaseImport />} />
+            <Route path="/settings" element={<Settings />} />
+            
+            {/* <Route path="/communications" element={<EntityList type="COMMUNICATION" title="Communications" subtitle="Call records, messages, and social media interactions." />} />
+            <Route path="/locations" element={<EntityList type="LOCATION" title="Locations" subtitle="Geospatial data, known addresses, and safehouses." />} />
+            <Route path="/finances" element={<EntityList type="BANK" title="Finances" subtitle="Bank transactions, crypto wallets, and money flows." />} />
+            <Route path="/vehicles" element={<EntityList type="VEHICLE" title="Vehicles" subtitle="Registered vehicles, ANPR scans, and linked transport." />} />
+            <Route path="/evidence" element={<EntityList type="FIR" title="Evidence" subtitle="FIRs, seized items, and physical reports." />} />
+            <Route path="/cctv" element={<EntityList type="CCTV" title="CCTV Analysis" subtitle="Facial recognition logs and camera timestamps." />} />
+            <Route path="/reports" element={<EntityList type="REPORT" title="Reports" subtitle="Generated analysis and intelligence summaries." />} />
+             */}
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Route>
         ) : (
