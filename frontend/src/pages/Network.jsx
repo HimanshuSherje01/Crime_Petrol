@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Filter, X, Search, User, Phone, MapPin, Car, Building, FileText, Camera, Loader2, Maximize2, RotateCw, ZoomIn, Hand, RotateCcw, ChevronDown } from 'lucide-react'
 import ForceGraph3D from 'react-force-graph-3d'
+import * as THREE from 'three'
 import { useStore } from '../store/useStore'
 import clsx from 'clsx'
 
@@ -35,6 +36,124 @@ const NODE_TYPES_CONFIG = [
   { id: 'FIR', label: 'FIRs / Cases', icon: FileText, color: 'text-[#EF4444]' },
   { id: 'CCTV', label: 'CCTV', icon: Camera, color: 'text-[#3B82F6]' },
 ]
+
+const NODE_REL_SIZE = 4 // matches 3d-force-graph default nodeRelSize
+
+function nodeRadius(node) {
+  return Math.cbrt(node.val || 1) * NODE_REL_SIZE
+}
+
+function makeCanvasSprite(canvasW, canvasH, draw) {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvasW
+  canvas.height = canvasH
+  draw(canvas.getContext('2d'))
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  })
+  const sprite = new THREE.Sprite(material)
+  sprite.scale.set(canvasW / 128, canvasH / 128, 1)
+  return sprite
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+function makeNameSprite(name, score, connectionCount, color, isSelected) {
+  return makeCanvasSprite(640, 200, ctx => {
+    let fontSize = 44
+    ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`
+    while (ctx.measureText(name).width > 600 && fontSize > 24) {
+      fontSize -= 2
+      ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`
+    }
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+
+    // Name with a soft "bloom" glow behind the glyphs
+    ctx.shadowColor = isSelected ? '#ffffff' : color
+    ctx.shadowBlur = isSelected ? 22 : 14
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(name, 320, 58)
+    ctx.shadowBlur = 0
+
+    // Connection-count pill below the name
+    const annotation = `${connectionCount} connections`
+    ctx.font = `700 26px Inter, system-ui, sans-serif`
+    const pillW = Math.min(560, Math.max(160, ctx.measureText(annotation).width + 46))
+    const pillH = 46
+    roundRectPath(ctx, 320 - pillW / 2, 112, pillW, pillH, pillH / 2)
+    ctx.fillStyle = 'rgba(3,5,9,0.78)'
+    ctx.fill()
+    ctx.strokeStyle = color
+    ctx.lineWidth = 3
+    ctx.stroke()
+    ctx.fillStyle = color
+    ctx.textAlign = 'center'
+    ctx.fillText(annotation, 320, 112 + pillH / 2)
+
+    // Risk score badge on the right of the pill
+    if (score !== undefined && score !== null) {
+      const badge = `${Math.round(score)} risk`
+      ctx.font = `700 24px Inter, system-ui, sans-serif`
+      const bw = ctx.measureText(badge).width + 36
+      roundRectPath(ctx, 320 - pillW / 2 - bw + 8, 112, bw - 8, pillH, pillH / 2)
+      ctx.fillStyle = isSelected ? '#ffffff' : 'rgba(148,163,184,0.15)'
+      ctx.fill()
+      ctx.fillStyle = isSelected ? '#050914' : '#e2e8f0'
+      ctx.fillText(badge, 320 - pillW / 2 - bw / 2 + 4, 112 + pillH / 2)
+    }
+  })
+}
+
+function makeGlowSprite(color) {
+  return makeCanvasSprite(128, 128, ctx => {
+    const g = ctx.createRadialGradient(64, 64, 2, 64, 64, 62)
+    g.addColorStop(0, color)
+    g.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, 128, 128)
+  })
+}
+
+function makeNodeVisual(node, connectionCount, risk, isSelected) {
+  const group = new THREE.Group()
+  const radius = nodeRadius(node)
+  const color = node.color || '#06B6D4'
+
+  // Soft halo/gloom behind the node
+  const glow = makeGlowSprite(color)
+  const gs = radius * (isSelected ? 6.5 : 4)
+  glow.scale.set(gs, gs, 1)
+  glow.position.set(0, 0, -radius * 0.6)
+  group.add(glow)
+
+  // Persistent name label + connection count
+  const label = makeNameSprite(node.name || node.id, risk?.risk_score, connectionCount, isSelected ? '#ffffff' : color, isSelected)
+  label.position.set(0, radius + 3.4, 0)
+  group.add(label)
+
+  return group
+}
+
+function resolveLinkEndpoint(endpoint) {
+  if (endpoint == null) return ''
+  if (typeof endpoint === 'object') return endpoint.id != null ? String(endpoint.id) : ''
+  return String(endpoint)
+}
 
 export default function Network() {
   const { graphData, dashboardStats, fetchEntityDetails, players, selectedCase, analyzeState, analyzeCase } = useStore()
@@ -93,7 +212,8 @@ export default function Network() {
         name: n.data.label,
         group: n.data.type?.toUpperCase(),
         color: NODE_COLORS[n.data.type?.toUpperCase()] || NODE_COLORS.DEFAULT,
-        val: 1.5 + (nodeDegree[n.data.id] || 0) / maxDeg
+        connections: nodeDegree[n.data.id] || 0,
+        val: 2 + (nodeDegree[n.data.id] || 0) / maxDeg * 6
       }))
 
     const nodeIds = new Set(filteredNodes.map(n => n.id))
@@ -142,6 +262,27 @@ export default function Network() {
       2000
     )
   }, [])
+
+  // ---- Node rendering: persistent labels, glow, and risk badges ----
+  // Rebuild node visuals when the selection changes so highlight/bloom updates.
+  const nodeVisualizer = useCallback((node) => {
+    const risk = node.group === 'PERSON' ? playerRiskById[node.id] : null
+    return makeNodeVisual(node, node.connections ?? 0, risk, selectedNode?.id === node.id)
+  }, [selectedNode, playerRiskById])
+
+  // ---- Link rendering: white connections, expanded when a node is selected ----
+  const isLinkActive = useCallback((link) => {
+    if (!selectedNode) return true
+    const s = resolveLinkEndpoint(link.source)
+    const t = resolveLinkEndpoint(link.target)
+    return s === selectedNode.id || t === selectedNode.id
+  }, [selectedNode])
+
+  // Memoize on selection so 3d-force-graph reconstitutes links when it changes
+  const linkColorFn = useCallback(() => '#ffffff', [])
+  const linkOpacityFn = useCallback((link) => (isLinkActive(link) ? 0.95 : 0.12), [isLinkActive])
+  const linkWidthFn = useCallback((link) => (isLinkActive(link) ? 1.6 : 0.3), [isLinkActive])
+  const nodeValSelected = useCallback((node) => node.val * (selectedNode?.id === node.id ? 1.7 : 1), [selectedNode])
 
   // Right sidebar active tab
   const [activeTab, setActiveTab] = useState('Overview')
@@ -296,10 +437,16 @@ export default function Network() {
               graphData={gData}
               nodeLabel="name"
               nodeColor="color"
+              nodeVal={nodeValSelected}
               nodeResolution={16}
-              linkColor={() => 'rgba(255,255,255,0.15)'}
-              linkWidth={0.5}
+              nodeOpacity={1}
+              nodeThreeObjectExtend={nodeVisualizer}
+              linkColor={linkColorFn}
+              linkOpacity={linkOpacityFn}
+              linkWidth={linkWidthFn}
+              linkResolution={4}
               onNodeClick={handleNodeClick}
+              onBackgroundClick={() => setSelectedNode(null)}
               backgroundColor="#000000"
               showNavInfo={false}
               enableNodeDrag={false}

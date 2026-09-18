@@ -39,12 +39,33 @@ def run_pipeline(case_id: str, db: Session, mongo_db):
 
     # 2. Extract Entities
     print("Step 2: Extracting entities...")
+    from app.nlp.llm_extractor import extract_with_llm
+
+    def _merge_entity_lists(base_ents, extra_ents):
+        seen = set()
+        merged = []
+        for ent in base_ents + extra_ents:
+            key = (ent["text"].strip().lower(), ent["type"])
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(ent)
+        return merged
+
     raw_entities = []
+    llm_used = False
     for doc in parsed_data:
+        # spaCy + regex first (reliable for phones, vehicles, amounts)
         ents = extract(doc["text"], doc["source_type"], doc["file"])
+        # Groq LLM second (better for messy FIR / surveillance text); empty when no key
+        llm_ents = extract_with_llm(doc["text"], doc["source_type"], doc["file"])
+        if llm_ents:
+            llm_used = True
+            ents = _merge_entity_lists(ents, llm_ents)
         raw_entities.extend(ents)
-        
-    print(f"Extracted {len(raw_entities)} raw entities.")
+
+    engine_name = "spaCy + Groq LLM" if llm_used else "spaCy fallback"
+    print(f"Extracted {len(raw_entities)} raw entities ({engine_name}).")
 
     # 3. Resolve Entities
     print("Step 3: Resolving entities...")
@@ -166,6 +187,7 @@ def run_pipeline(case_id: str, db: Session, mongo_db):
             "nodes": G.number_of_nodes(),
             "edges": G.number_of_edges(),
             "alerts_count": len(alerts),
+            "nlp_engine": "groq-llm+spacy" if llm_used else "spacy",
         },
     }
 
