@@ -63,7 +63,11 @@ def run_pipeline(case_id: str, db: Session, mongo_db):
 
     # 6. Alerts
     print("Step 6: Generating alerts...")
-    alerts = generate_alerts(case_id, G, analytics_res)
+    alerts = generate_alerts(case_id, G, analytics_res, entity_ids=set(canonical.keys()))
+    # Safety net: an alert must reference a real entity (file nodes are not entities)
+    for alert in alerts:
+        if alert.get("entity_id") not in canonical:
+            alert["entity_id"] = None
     print(f"Generated {len(alerts)} alerts.")
 
     # 7. Ground Truth Validation
@@ -87,9 +91,12 @@ def run_pipeline(case_id: str, db: Session, mongo_db):
             type=e_data["type"], 
             case_id=case_id
         ))
-    
-    # Insert Relationships (Edges)
+    db.flush()  # Ensure entities are written before FK-referencing rows
+
+    # Insert Relationships (Edges) — only where both endpoints are real entities
     for u, v, data in G.edges(data=True):
+        if u not in canonical or v not in canonical:
+            continue
         db.add(Relationship(
             source_id=u,
             target_id=v,

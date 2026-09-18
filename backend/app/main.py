@@ -60,7 +60,7 @@ async def analyze_case(case_id: str, db: Session = Depends(get_postgres_db)):
     from app.database.mongodb import db as mongo_client
 
     # Log analysis run
-    run_id = f"RUN-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    run_id = f"RUN-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4]}"
     new_run = AnalysisRun(id=run_id, case_id=case_id, status="Running", files_processed=0)
     db.add(new_run)
     db.commit()
@@ -69,6 +69,11 @@ async def analyze_case(case_id: str, db: Session = Depends(get_postgres_db)):
         res = run_pipeline(case_id, db, mongo_client.db)
     except Exception as e:
         print(f"Pipeline failed for {case_id}: {e}")
+        db.rollback()  # session may be in a failed state after the pipeline error
+        new_run = db.query(AnalysisRun).filter(AnalysisRun.id == run_id).first()
+        if new_run is None:
+            new_run = AnalysisRun(id=run_id, case_id=case_id, status="Failed")
+            db.add(new_run)
         new_run.status = "Failed"
         new_run.findings = str(e)[:200]
         db.commit()
