@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from typing import List
 import os
+import re
 import shutil
 import uuid
 from datetime import datetime
@@ -11,7 +12,7 @@ from datetime import datetime
 from app.config import list_cases
 from app.database.mongodb import connect_to_mongo, close_mongo_connection, get_db as get_mongo_db
 from app.database.supabase import Base, engine, get_db as get_postgres_db, SessionLocal
-from app.database.models import Entity, Relationship, Alert, Case, UploadedFile, AnalysisRun
+from app.database.models import Entity, Relationship, Alert, Case, UploadedFile, AnalysisRun, ParsedDocument
 from app.pipeline import run_pipeline
 
 # Create tables if they don't exist
@@ -37,7 +38,17 @@ async def startup_db_client():
         db.add(Case(id="mock_case_id", name="Flagship Jewelry Heist", priority="High"))
         db.commit()
     db.close()
-    
+
+    # Lightweight migration: add analytics columns to an existing entities table
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE entities ADD COLUMN IF NOT EXISTS pagerank FLOAT"))
+            conn.execute(text("ALTER TABLE entities ADD COLUMN IF NOT EXISTS betweenness FLOAT"))
+            conn.execute(text("ALTER TABLE entities ADD COLUMN IF NOT EXISTS community INTEGER"))
+            conn.execute(text("ALTER TABLE entities ADD COLUMN IF NOT EXISTS risk_score FLOAT"))
+    except Exception as e:
+        print(f"Migration (entities analytics columns) skipped: {e}")
+
     # Ensure upload dir exists
     os.makedirs("uploads", exist_ok=True)
 
@@ -123,12 +134,18 @@ async def get_players(case_id: str, db: Session = Depends(get_postgres_db)):
             .filter(or_(Relationship.source_id == p.id, Relationship.target_id == p.id))
             .count()
         )
-        risk_score = round(min(100.0, max(10.0, connections * 10.0)), 1)
+        if p.risk_score is not None and p.community is not None:
+            risk_score = round(p.risk_score, 1)
+        else:
+            risk_score = round(min(100.0, max(10.0, connections * 10.0)), 1)
         players.append({
             "id": p.id,
             "name": p.name,
             "type": p.type,
             "connections": connections,
+            "pagerank": round(p.pagerank or 0, 4),
+            "betweenness": round(p.betweenness or 0, 4),
+            "community": p.community or 0,
             "risk_score": risk_score,
             "threat_level": (
                 "Critical" if risk_score >= 80 else
@@ -178,11 +195,7 @@ async def get_ground_truth(case_id: str):
     # Recalculating is easy enough:
     from app.config import case_path
     from app.validation.ground_truth import validate_against_ground_truth
-    from app.database.mongodb import db as mongo_client
     
-    # We can reconstruct canonical roughly to check GT, but we don't have it structured.
-    # Let's return a dummy or pull from a Stats table. For now, returning dummy.
-    # Or actually, we can query Entities from DB for the case.
     from app.database.supabase import SessionLocal
     db = SessionLocal()
     entities = db.query(Entity).filter(Entity.case_id == case_id).all()
@@ -233,16 +246,13 @@ async def upload_file(case_id: str, files: List[UploadFile] = File(...), db: Ses
 @app.delete("/api/clear/{case_id}")
 async def clear_case(case_id: str, db: Session = Depends(get_postgres_db)):
     try:
-        from app.database.mongodb import db as mongo_client
-        if mongo_client is not None:
-            mongo_client.db[f"{case_id}_parsed_data"].drop()
-        
         # Postgres Cleanup
         db.query(Alert).filter(Alert.case_id == case_id).delete()
         db.query(Relationship).filter(Relationship.case_id == case_id).delete()
         db.query(Entity).filter(Entity.case_id == case_id).delete()
         db.query(AnalysisRun).filter(AnalysisRun.case_id == case_id).delete()
         db.query(UploadedFile).filter(UploadedFile.case_id == case_id).delete()
+        db.query(ParsedDocument).filter(ParsedDocument.case_id == case_id).delete()
         db.commit()
         
         # Disk Cleanup
@@ -270,3 +280,95 @@ async def get_entities_by_type(entity_type: str, db: Session = Depends(get_postg
     # Used for Locations, Vehicles, CCTV, etc.
     results = db.query(Entity).filter(Entity.type == entity_type.upper()).all()
     return [{"id": e.id, "name": e.name, "type": e.type, "case_id": e.case_id} for e in results]
+
+
+_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+def _parse_dates(text_content: str):
+    """Return a list of unique (date_object, time_string_or_None) tuples found in text."""
+    found = []
+    for m in re.finditer(r"\b(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?\b", text_content):
+        try:
+            d = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            t = f"{int(m.group(4)):02d}:{m.group(5)}" if m.group(4) else None
+            found.append((d, t))
+        except ValueError:
+            pass
+    for m in re.finditer(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b", text_content):
+        try:
+            d = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+            found.append((d, None))
+        except ValueError:
+            pass
+    for m in re.finditer(r"\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})\b", text_content, re.IGNORECASE):
+        try:
+            d = datetime(int(m.group(3)), _MONTHS[m.group(2).lower()], int(m.group(1)))
+            found.append((d, None))
+        except ValueError:
+            pass
+    # De-duplicate while preserving order
+    seen = set()
+    unique = []
+    for item in found:
+        key = (item[0].date().isoformat(), item[1])
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
+
+
+@app.get("/api/timeline/{case_id}")
+async def get_timeline(case_id: str, db: Session = Depends(get_postgres_db)):
+    from app.config import case_path
+
+    stored = db.query(ParsedDocument).filter(ParsedDocument.case_id == case_id).all()
+    docs = [
+        {"file": d.file, "text": d.text, "source_type": d.source_type}
+        for d in stored
+    ]
+
+    if not docs:
+        # Fallback: re-parse lightweight text/CSV files only (pre-existing cases)
+        from app.parsers.text_parser import parse_text
+        from app.parsers.csv_parser import parse_csv
+        path = case_path(case_id)
+        docs = parse_text(path) + parse_csv(path)
+
+    entities = db.query(Entity).filter(Entity.case_id == case_id).all()
+    ent_by_name = {e.name.lower(): e for e in entities}
+
+    events = []
+    for doc in docs:
+        text = doc.get("text", "") or ""
+        name = doc.get("file", "")
+        mentions = []
+        for name_lower, e in ent_by_name.items():
+            if name_lower in text.lower():
+                mentions.append({"id": e.id, "name": e.name, "type": e.type})
+
+        dates = _parse_dates(text)
+        if not dates:
+            events.append({
+                "date": None,
+                "display": "Date unknown",
+                "source_type": doc.get("source_type", "DOCUMENT"),
+                "file": name,
+                "entities": mentions,
+            })
+            continue
+        for d, t in dates:
+            base = d.strftime("%a, %d %b %Y")
+            display = f"{base}" if t is None else f"{base} · {t}"
+            events.append({
+                "date": d.date().isoformat() + (f"T{t}" if t else ""),
+                "display": display,
+                "source_type": doc.get("source_type", "DOCUMENT"),
+                "file": name,
+                "entities": mentions,
+            })
+
+    events.sort(key=lambda ev: ev["date"] or "9999")
+    return events

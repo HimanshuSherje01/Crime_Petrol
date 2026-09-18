@@ -12,7 +12,7 @@ from app.alerts.rules import generate_alerts
 from app.validation.ground_truth import validate_against_ground_truth
 
 from sqlalchemy.orm import Session
-from app.database.models import Entity, Relationship, Alert
+from app.database.models import Entity, Relationship, Alert, ParsedDocument
 
 def run_pipeline(case_id: str, db: Session, mongo_db):
     print(f"Starting pipeline for {case_id}")
@@ -30,12 +30,16 @@ def run_pipeline(case_id: str, db: Session, mongo_db):
     
     print(f"Extracted {len(parsed_data)} documents.")
     
-    # Save parsed data to MongoDB
-    if mongo_db is not None:
-        case_col = mongo_db[f"{case_id}_parsed_data"]
-        case_col.drop()
-        if parsed_data:
-            case_col.insert_many(parsed_data)
+    # Save parsed data to Postgres (sync engine — same as entities/edges)
+    db.query(ParsedDocument).filter(ParsedDocument.case_id == case_id).delete()
+    for doc in parsed_data:
+        db.add(ParsedDocument(
+            case_id=case_id,
+            file=doc.get("file", ""),
+            source_type=doc.get("source_type", ""),
+            text=doc.get("text", ""),
+        ))
+    db.commit()
 
     # 2. Extract Entities
     print("Step 2: Extracting entities...")
@@ -104,13 +108,22 @@ def run_pipeline(case_id: str, db: Session, mongo_db):
     db.query(Entity).filter(Entity.case_id == case_id).delete()
     db.commit()
 
-    # Insert Entities
+    players = _build_players(canonical, analytics_res)
+    player_by_id = {p["id"]: p for p in players}
+
+    # Insert Entities (persist graph analytics so later API reads survive restarts)
     for e_id, e_data in canonical.items():
+        m = analytics_res.get(e_id) or {}
+        risk = player_by_id[e_id]["risk_score"] if e_id in player_by_id else None
         db.add(Entity(
             id=e_id, 
             name=e_data["name"], 
             type=e_data["type"], 
-            case_id=case_id
+            case_id=case_id,
+            pagerank=round(m.get("pagerank", 0), 4),
+            betweenness=round(m.get("betweenness", 0), 4),
+            community=m.get("community", 0),
+            risk_score=risk,
         ))
     db.flush()  # Ensure entities are written before FK-referencing rows
 
@@ -153,8 +166,6 @@ def run_pipeline(case_id: str, db: Session, mongo_db):
         }}
         for u, v, data in G.edges(data=True)
     ]
-
-    players = _build_players(canonical, analytics_res)
 
     # Files the pipeline actually parsed (for the Uploaded Files panel)
     seen, files_processed = set(), []

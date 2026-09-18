@@ -14,6 +14,10 @@ import CaseImport from './pages/CaseImport'
 import RecentAnalyses from './pages/RecentAnalyses'
 import EntityList from './pages/EntityList'
 import Settings from './pages/Settings'
+import LinkAnalysis from './pages/analytics/LinkAnalysis'
+import TimelineView from './pages/analytics/TimelineView'
+import GeospatialView from './pages/analytics/GeospatialView'
+import Communities from './pages/analytics/Communities'
 
 export default function App() {
   const { user, setUser } = useStore()
@@ -41,6 +45,10 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/network" element={<Network />} />
             <Route path="/players" element={<Players />} />
+            <Route path="/link-analysis" element={<LinkAnalysis />} />
+            <Route path="/timeline" element={<TimelineView />} />
+            <Route path="/geospatial" element={<GeospatialView />} />
+            <Route path="/communities" element={<Communities />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/case" element={<CaseImport />} />
             <Route path="/recent-analyses" element={<RecentAnalyses />} />

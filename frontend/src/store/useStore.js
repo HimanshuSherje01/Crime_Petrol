@@ -221,5 +221,15 @@ export const useStore = create((set, get) => ({
       console.error(e)
       return []
     }
+  },
+
+  fetchTimeline: async (caseId) => {
+    try {
+      const res = await axios.get(`${API_URL}/timeline/${caseId}`)
+      return res.data
+    } catch (e) {
+      console.error(e)
+      return []
+    }
   }
 }))

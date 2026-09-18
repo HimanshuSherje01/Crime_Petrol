@@ -10,6 +10,10 @@ class Entity(Base):
     name = Column(String, index=True)
     type = Column(String) # PERSON, PHONE, LOCATION, VEHICLE, BANKACCOUNT, FIR, CCTV, AUDIO
     case_id = Column(String, index=True)
+    pagerank = Column(Float, default=0.0)
+    betweenness = Column(Float, default=0.0)
+    community = Column(Integer, default=0)
+    risk_score = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Relationship(Base):
@@ -65,5 +69,15 @@ class AnalysisRun(Base):
     modules = Column(String, default="All")
     findings = Column(String, default="-")
     duration = Column(String, default="-")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ParsedDocument(Base):
+    __tablename__ = "parsed_documents"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    case_id = Column(String, index=True)
+    file = Column(String)
+    source_type = Column(String)
+    text = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 

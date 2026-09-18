@@ -3,7 +3,8 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, FolderOpen, Network, Users, MessageSquare,
   MapPin, DollarSign, Car, FileText, Video, FileBarChart,
-  Search, Bell, Settings, Target, ChevronDown, ChevronRight, Loader2, History
+  Search, Bell, Settings, Target, ChevronDown, ChevronRight, Loader2, History,
+  Link2, CalendarRange, Map, Share2
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import clsx from 'clsx'
@@ -31,6 +32,10 @@ export default function DashboardLayout() {
     },
     { name: 'Network', path: '/network', icon: Network },
     { name: 'Players', path: '/players', icon: Users },
+    { name: 'Link Analysis', path: '/link-analysis', icon: Link2 },
+    { name: 'Timeline', path: '/timeline', icon: CalendarRange },
+    { name: 'Geospatial', path: '/geospatial', icon: Map },
+    { name: 'Communities', path: '/communities', icon: Share2 },
     { name: 'Recent Analyses', path: '/recent-analyses', icon: History },
     /* { name: 'Communications', path: '/communications', icon: MessageSquare },
     { name: 'Locations', path: '/locations', icon: MapPin },

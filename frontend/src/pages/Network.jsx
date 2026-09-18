@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Filter, X, Search, User, Phone, MapPin, Car, Building, FileText, Camera, Loader2, Maximize2, RotateCw, ZoomIn, Hand, RotateCcw, ChevronDown } from 'lucide-react'
 import ForceGraph3D from 'react-force-graph-3d'
 import * as THREE from 'three'
 import { useStore } from '../store/useStore'
 import clsx from 'clsx'
+
+const ANALYTICS_VIEWS = [
+  { label: '3D Graph', path: '/network' },
+  { label: 'Link Analysis', path: '/link-analysis' },
+  { label: 'Timeline View', path: '/timeline' },
+  { label: 'Geospatial View', path: '/geospatial' },
+  { label: 'Community Detection', path: '/communities' },
+]
 
 const NODE_COLORS = {
   PERSON: '#06B6D4',
@@ -157,6 +166,8 @@ function resolveLinkEndpoint(endpoint) {
 
 export default function Network() {
   const { graphData, dashboardStats, fetchEntityDetails, players, selectedCase, analyzeState, analyzeCase } = useStore()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [selectedNode, setSelectedNode] = useState(null)
   const [nodeDetails, setNodeDetails] = useState(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
@@ -367,15 +378,16 @@ export default function Network() {
         {/* Top Graph Toolbar */}
         <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-start pointer-events-none">
           <div className="flex bg-[#0A0F1C]/80 border border-[#1E293B] rounded-lg p-1 backdrop-blur-md pointer-events-auto">
-            {['3D Graph', 'Link Analysis', 'Timeline View', 'Geospatial View', 'Community Detection'].map(tab => (
-              <button 
-                key={tab} 
+            {ANALYTICS_VIEWS.map(view => (
+              <button
+                key={view.path}
+                onClick={() => navigate(view.path)}
                 className={clsx(
                   "px-3 py-1.5 rounded-md text-[11px] transition-colors",
-                  tab === '3D Graph' ? "bg-primary/20 text-primary font-medium" : "text-gray-400 hover:text-white hover:bg-white/5"
+                  location.pathname === view.path ? "bg-primary/20 text-primary font-medium" : "text-gray-400 hover:text-white hover:bg-white/5"
                 )}
               >
-                {tab}
+                {view.label}
               </button>
             ))}
           </div>
