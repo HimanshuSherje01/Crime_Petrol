@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import axios from 'axios'
 
-const API_URL = 'http://localhost:8000/api'
+const API_URL = '/api'
 
 export const useStore = create((set, get) => ({
   user: null,
@@ -66,6 +66,16 @@ export const useStore = create((set, get) => ({
     } catch (e) {
       console.error(e)
       set({ loading: false })
+    }
+  },
+
+  fetchEntityDetails: async (entityId) => {
+    try {
+      const res = await axios.get(`${API_URL}/entity/${entityId}`)
+      return res.data
+    } catch (e) {
+      console.error(e)
+      return null
     }
   }
 }))

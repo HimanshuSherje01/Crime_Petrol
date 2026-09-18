@@ -1,111 +1,182 @@
-import React from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Network, Users, Bell, Folder, Search, Shield, ChevronDown, Bell as BellIcon, LogOut } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { 
+  LayoutDashboard, FolderOpen, Network, Users, MessageSquare, 
+  MapPin, DollarSign, Car, FileText, Video, FileBarChart, 
+  Search, Bell, Settings, Target, ChevronDown, ChevronRight 
+} from 'lucide-react'
 import { useStore } from '../store/useStore'
 import clsx from 'clsx'
 
 export default function DashboardLayout() {
-  const { user, signOut, cases, selectedCase, selectCase } = useStore()
+  const { user, signOut, cases, selectedCase, selectCase, fetchCases, alerts } = useStore()
+  const [casesOpen, setCasesOpen] = useState(true)
+  const navigate = useNavigate()
+  const location = useLocation()
 
-  const navItems = [
+  useEffect(() => {
+    fetchCases()
+  }, [fetchCases])
+
+  // Map to real routes if needed, otherwise just stylistic for now
+  const mainNav = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Cases', path: '#', icon: FolderOpen, isSection: true, open: casesOpen, setOpen: setCasesOpen,
+      children: [
+        { name: 'All Cases', path: '/cases' },
+        { name: 'New Case', path: '/cases/new' },
+        { name: 'Import & Analyze', path: '/case' },
+        { name: 'Case Workspace', path: '/workspace' },
+      ]
+    },
     { name: 'Network', path: '/network', icon: Network },
     { name: 'Players', path: '/players', icon: Users },
-    { name: 'Alerts', path: '/alerts', icon: Bell, badge: 12 },
-    { name: 'Case', path: '/case', icon: Folder },
+    { name: 'Communications', path: '/communications', icon: MessageSquare },
+    { name: 'Locations', path: '/locations', icon: MapPin },
+    { name: 'Finances', path: '/finances', icon: DollarSign },
+    { name: 'Vehicles', path: '/vehicles', icon: Car },
+    { name: 'Evidence', path: '/evidence', icon: FileText },
+    { name: 'CCTV', path: '/cctv', icon: Video },
+    { name: 'Reports', path: '/reports', icon: FileBarChart },
     { name: 'Search', path: '/search', icon: Search },
+    { name: 'Alerts', path: '/alerts', icon: Bell, badge: alerts.length || 12 },
+    { name: 'Settings', path: '/settings', icon: Settings },
   ]
 
+  const dateStr = new Intl.DateTimeFormat('en-GB', { 
+    weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', 
+    hour: '2-digit', minute: '2-digit', hour12: true 
+  }).format(new Date())
+
   return (
-    <div className="flex h-screen bg-background text-gray-200 overflow-hidden">
+    <div className="flex h-screen bg-background text-[13px] font-sans overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 bg-card border-r border-border flex flex-col">
-        <div className="p-6 flex items-center space-x-3">
-          <Shield className="w-8 h-8 text-primary" />
-          <div>
-            <h1 className="text-xl font-bold text-white">Crime<span className="text-primary">Petrol</span></h1>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-0.5">Connecting the dots</p>
+      <aside className="w-60 bg-[#060913] border-r border-border flex flex-col shrink-0 z-20">
+        <div className="p-4 flex items-center space-x-2">
+          <Target className="w-6 h-6 text-primary" strokeWidth={1.5} />
+          <div className="leading-tight">
+            <h1 className="text-lg font-bold text-white tracking-wide">Crime<span className="text-primary">Petrol</span></h1>
+            <p className="text-[9px] text-gray-500 uppercase tracking-widest mt-0.5">Intelligence Drives<br/>Safer Societies</p>
           </div>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-2">
-          {navItems.map(item => (
-            <NavLink
-              key={item.name}
-              to={item.path}
-              className={({ isActive }) => clsx(
-                "flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors",
-                isActive ? "bg-border text-primary font-medium" : "text-gray-400 hover:text-white hover:bg-border/50"
+        <nav className="flex-1 overflow-y-auto py-2 custom-scrollbar">
+          {mainNav.map((item, idx) => (
+            <div key={item.name}>
+              {item.isSection ? (
+                <>
+                  <button 
+                    onClick={() => item.setOpen(!item.open)}
+                    className={clsx(
+                      "w-full flex items-center justify-between px-4 py-2 hover:bg-border/40 transition-colors",
+                      location.pathname.startsWith('/case') ? "text-primary bg-primary/5 border-l-2 border-primary" : "text-gray-400"
+                    )}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <item.icon className="w-4 h-4 opacity-80" />
+                      <span>{item.name}</span>
+                    </div>
+                    <ChevronDown className={clsx("w-3 h-3 transition-transform", !item.open && "-rotate-90")} />
+                  </button>
+                  {item.open && (
+                    <div className="bg-[#030509] py-1 border-y border-border/50">
+                      {item.children.map(child => (
+                        <NavLink
+                          key={child.name}
+                          to={child.path}
+                          className={({ isActive }) => clsx(
+                            "flex items-center pl-11 pr-4 py-1.5 transition-colors",
+                            isActive ? "text-primary bg-primary/10 font-medium" : "text-gray-500 hover:text-gray-300"
+                          )}
+                        >
+                          {child.name}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <NavLink
+                  to={item.path}
+                  className={({ isActive }) => clsx(
+                    "flex items-center justify-between px-4 py-2 transition-colors",
+                    isActive ? "text-primary bg-primary/5 border-l-2 border-primary font-medium" : "text-gray-400 hover:text-gray-300 border-l-2 border-transparent hover:bg-border/30"
+                  )}
+                >
+                  <div className="flex items-center space-x-3">
+                    <item.icon className="w-4 h-4 opacity-80" />
+                    <span>{item.name}</span>
+                  </div>
+                  {item.badge && (
+                    <span className="bg-danger text-white text-[10px] font-bold px-1.5 py-0 rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+                </NavLink>
               )}
-            >
-              <item.icon className="w-5 h-5" />
-              <span className="flex-1">{item.name}</span>
-              {item.badge && (
-                <span className="bg-danger text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                  {item.badge}
-                </span>
-              )}
-            </NavLink>
+            </div>
           ))}
         </nav>
 
-        <div className="p-6 text-xs text-gray-600">
-          <p>"DATA</p>
-          <p>INTELLIGENCE</p>
-          <p>SAFER SOCIETIES"</p>
-          <p className="mt-4">v1.0.0</p>
+        <div className="p-4 border-t border-border/50 text-[10px] text-gray-600 space-y-1">
+          <p>v1.2.0</p>
+          <p>Law Enforcement Intelligence Platform</p>
+          <p>Restricted Access</p>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Topbar */}
-        <header className="h-16 border-b border-border bg-card/50 flex items-center justify-between px-6 backdrop-blur-md z-10">
-          <div className="flex items-center space-x-4 flex-1">
-            <div className="relative group">
-              <button className="flex items-center space-x-2 bg-background border border-border px-4 py-2 rounded-lg text-sm hover:border-primary/50 transition-colors">
-                <span>{selectedCase || 'Select a Case'}</span>
-                <ChevronDown className="w-4 h-4 text-gray-400" />
-              </button>
-              {/* Dropdown would go here */}
-            </div>
-            
-            <div className="flex-1 max-w-xl relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-              <input 
-                type="text" 
-                placeholder="Search people, phones, locations, vehicles, FIRs..." 
-                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-primary transition-colors text-white"
-              />
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#0A0F1C]">
+        {/* Top Header */}
+        <header className="h-14 border-b border-border bg-[#060913]/90 flex items-center justify-between px-4 backdrop-blur-md z-10 shrink-0">
+          
+          <div className="flex items-center space-x-2 text-gray-400 text-xs">
+            <span className="cursor-pointer hover:text-gray-300">Case Workspace</span>
+            <ChevronRight className="w-3 h-3" />
+            <div className="flex items-center space-x-1 cursor-pointer hover:text-white">
+              <span className="text-white">Import & Analyze</span>
+              <ChevronDown className="w-3 h-3" />
             </div>
           </div>
 
-          <div className="flex items-center space-x-6">
+          {/* Search Bar */}
+          <div className="flex-1 max-w-xl mx-8 relative">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              placeholder="Search cases, people, phones, locations, FIRs..."
+              className="w-full bg-[#030509] border border-border rounded pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:border-primary/50 transition-colors text-white placeholder-gray-600"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 text-[10px] border border-gray-700 px-1 rounded">/</span>
+          </div>
+
+          {/* Right Topbar actions */}
+          <div className="flex items-center space-x-5">
             <button className="relative text-gray-400 hover:text-white transition-colors">
-              <BellIcon className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-danger rounded-full ring-2 ring-card"></span>
+              <Bell className="w-4 h-4" />
+              <span className="absolute -top-1 -right-1.5 w-3 h-3 bg-danger rounded-full ring-2 ring-[#060913] text-[8px] flex items-center justify-center text-white font-bold">3</span>
             </button>
-            
-            <div className="flex items-center space-x-3 border-l border-border pl-6">
-              <div className="w-8 h-8 rounded-full bg-border flex items-center justify-center font-semibold text-sm">
+
+            <div className="flex items-center space-x-3 pl-5 border-l border-border/50">
+              <div className="w-7 h-7 rounded-full bg-border flex items-center justify-center font-medium text-xs text-white relative">
                 SK
+                <div className="absolute bottom-0 right-0 w-2 h-2 bg-success rounded-full border border-[#060913]"></div>
               </div>
-              <div className="text-sm">
-                <p className="font-medium text-white">{user?.email?.split('@')[0] || 'Investigator'}</p>
-                <div className="flex items-center space-x-1">
-                  <span className="w-2 h-2 rounded-full bg-success"></span>
-                  <span className="text-xs text-gray-400">Live</span>
-                </div>
+              <div className="text-[11px] leading-tight">
+                <p className="text-white font-medium">{user?.email?.split('@')[0] || 'Sudeep Kuralkar'}</p>
+                <p className="text-gray-500">Investigator</p>
               </div>
-              <button onClick={signOut} className="ml-2 text-gray-500 hover:text-danger">
-                <LogOut className="w-4 h-4" />
-              </button>
+            </div>
+
+            <div className="text-[11px] text-gray-400 text-right leading-tight pl-5 border-l border-border/50">
+              <p>{dateStr.split(', ')[0]}</p>
+              <p>{dateStr.split(', ')[1]}</p>
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-auto bg-background p-6">
+        {/* Dynamic Page Content */}
+        <main className="flex-1 overflow-auto bg-[#0A0F1C]">
           <Outlet />
         </main>
       </div>
