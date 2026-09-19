@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import axios from 'axios'
 
-const API_URL = '/api'
+const API_URL = `${import.meta.env.VITE_API_BASE_URL}/api`
 
 const freshDashboard = () => ({ gtMatch: 0, nodes: 0, edges: 0, players: 0, alerts: 0 })
 
